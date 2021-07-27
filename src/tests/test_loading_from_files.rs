@@ -1,6 +1,4 @@
-use std::{fs::File, io::Write};
-use tempfile::{NamedTempFile, TempPath};
-
+use super::utils::file_with;
 use crate::Config;
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -44,12 +42,3 @@ value: 2
 }
 
 //////////////////////////////////////////////////////////////////////////////////
-
-fn file_with(contents: &str) -> (File, TempPath) {
-    let mut returned = NamedTempFile::new().unwrap();
-
-    returned
-        .write_all(contents.as_bytes())
-        .expect("Writing to file failed");
-    returned.into_parts()
-}

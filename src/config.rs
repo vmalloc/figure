@@ -6,19 +6,27 @@ use std::{path::PathBuf, sync::Arc};
 
 use crate::config_loader::{ConfigLoader, FileSpec};
 
-struct ConfigInner<T> {
+struct ConfigInner<T: Send + Sync> {
     value: T,
     raw: Value,
 }
 
-pub struct Config<T = serde_json::Value>
-where
-    T: for<'de> Deserialize<'de>,
-{
+pub struct Config<T: Send + Sync> {
     inner: Arc<RwLock<ConfigInner<T>>>,
 }
 
-impl<T: for<'de> Deserialize<'de> + Serialize> Config<T> {
+impl<T: Send + Sync> Clone for Config<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<T> Config<T>
+where
+    T: for<'de> Deserialize<'de> + Serialize + Send + Sync,
+{
     pub fn from_json_file(path: impl Into<PathBuf>) -> ConfigLoader<T> {
         ConfigLoader::new(FileSpec::Json(path.into()))
     }
@@ -84,6 +92,15 @@ impl<T: for<'de> Deserialize<'de> + Serialize> Config<T> {
     fn write_inner(&self) -> RwLockWriteGuard<ConfigInner<T>> {
         self.inner.write()
     }
+
+    pub fn replace(&self, value: T) -> Result<()> {
+        let raw = serde_json::to_value(&value)?;
+        let mut locked = self.write_inner();
+        locked.value = value;
+        locked.raw = raw;
+
+        Ok(())
+    }
 }
 
 impl Config<Value> {
@@ -94,7 +111,7 @@ impl Config<Value> {
 
 impl<T> Config<T>
 where
-    T: for<'de> Deserialize<'de> + Serialize,
+    T: for<'de> Deserialize<'de> + Serialize + Send + Sync,
 {
     pub fn new_with(value: T) -> Result<Self> {
         let raw = serde_json::to_value(&value)?;
@@ -106,7 +123,7 @@ where
 
 impl<T> Config<T>
 where
-    T: for<'de> Deserialize<'de> + Serialize + Default,
+    T: for<'de> Deserialize<'de> + Serialize + Default + Send + Sync,
 {
     pub fn new_with_default() -> Result<Self> {
         Self::new_with(Default::default())
