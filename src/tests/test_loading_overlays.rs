@@ -83,22 +83,28 @@ fn test_watching_through_symlinks() {
 
     let dir_1 = temp_directory.path().join("dir1");
     let dir_2 = temp_directory.path().join("dir2");
+    std::fs::create_dir_all(&dir_1).unwrap();
+    std::fs::create_dir_all(&dir_2).unwrap();
+    let symlink_path = temp_directory.path().join("symlink");
+    std::os::unix::fs::symlink(&dir_1, &symlink_path).unwrap();
 
     std::fs::OpenOptions::new()
         .create(true)
+        .write(true)
         .open(dir_1.join("file"))
         .unwrap()
         .write_all("id: 1".as_bytes())
         .unwrap();
     std::fs::OpenOptions::new()
         .create(true)
+        .write(true)
         .open(dir_2.join("file"))
         .unwrap()
         .write_all("id: 2".as_bytes())
         .unwrap();
 
     let (_overlay, path) = file_with("name: Test");
-    let (cfg, _watcher) = Config::<ExampleConfig>::from_yaml_file(dir_1.join("file"))
+    let (cfg, _watcher) = Config::<ExampleConfig>::from_yaml_file(symlink_path.join("file"))
         .and_overlay_yaml(&path)
         .load_and_watch()
         .unwrap();
@@ -106,8 +112,16 @@ fn test_watching_through_symlinks() {
     {
         let inner = cfg.get();
         assert_eq!(inner.name, "Test");
-        assert_eq!(inner.id, 2);
+        assert_eq!(inner.id, 1);
     }
 
+    std::fs::remove_file(&symlink_path).unwrap();
+    std::os::unix::fs::symlink(&dir_2, &symlink_path).unwrap();
     std::thread::sleep(Duration::from_millis(10));
+
+    {
+        let inner = cfg.get();
+        assert_eq!(inner.name, "Test");
+        assert_eq!(inner.id, 2);
+    }
 }
