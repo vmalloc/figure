@@ -107,7 +107,7 @@ where
                     .iter()
                     .map(|f| f.mtime().ok())
                     .collect::<Vec<_>>();
-                if &new_stats != &stats {
+                if new_stats != stats {
                     let _ = loader.load_value().and_then(|v| config.replace(v));
                 }
                 stats = new_stats;
