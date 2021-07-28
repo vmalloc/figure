@@ -3,7 +3,7 @@ description = "Library for runtime configuration management"
 edition = "2018"
 license = "Apache-2.0"
 name = "figure"
-version = "0.0.1"
+version = "0.0.2"
 
 [dependencies]
 anyhow = "1.0.42"
