@@ -20,9 +20,8 @@ fn test_loading_json_file() {
         .load()
         .unwrap();
 
-    let inner = cfg.get();
-
-    assert_eq!(inner.value, 2)
+    let value = cfg.get().value;
+    assert_eq!(value, 2)
 }
 
 #[test]
@@ -36,9 +35,9 @@ value: 2
         .load()
         .unwrap();
 
-    let inner = cfg.get();
+    let value = cfg.get().value;
 
-    assert_eq!(inner.value, 2)
+    assert_eq!(value, 2)
 }
 
 //////////////////////////////////////////////////////////////////////////////////

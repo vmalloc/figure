@@ -109,19 +109,13 @@ fn test_watching_through_symlinks() {
         .load_and_watch()
         .unwrap();
 
-    {
-        let inner = cfg.get();
-        assert_eq!(inner.name, "Test");
-        assert_eq!(inner.id, 1);
-    }
+    assert_eq!(cfg.get().name, "Test");
+    assert_eq!(cfg.get().id, 1);
 
     std::fs::remove_file(&symlink_path).unwrap();
     std::os::unix::fs::symlink(&dir_2, &symlink_path).unwrap();
     std::thread::sleep(Duration::from_millis(10));
 
-    {
-        let inner = cfg.get();
-        assert_eq!(inner.name, "Test");
-        assert_eq!(inner.id, 2);
-    }
+    assert_eq!(cfg.get().name, "Test");
+    assert_eq!(cfg.get().id, 2);
 }
