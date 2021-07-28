@@ -11,6 +11,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-cache-${{ steps.toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.lock') }}-
+          restore-keys: |
+            ${{ runner.os }}-cargo-cache-${{ steps.toolchain.outputs.rustc_hash }}-
       - name: Clippy
         run: cargo clippy --tests --workspace --examples
       - name: Build
