@@ -1,6 +1,5 @@
 use crate::Config;
 use anyhow::{Context, Result};
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{
     marker::PhantomData,
@@ -22,8 +21,14 @@ pub struct ConfigLoader<T>
 where
     T: Send + Sync + 'static,
 {
-    files: Vec<FileSpec>,
+    spec: LoaderSpec,
     _p: PhantomData<T>,
+}
+
+#[derive(Clone, Default)]
+struct LoaderSpec {
+    files: Vec<FileSpec>,
+    error_callbacks: Vec<Arc<dyn Fn(&anyhow::Error) + 'static + Send + Sync>>,
 }
 
 impl<T> ConfigLoader<T>
@@ -31,10 +36,20 @@ where
     T: for<'de> Deserialize<'de> + Serialize + Send + Sync,
 {
     pub(crate) fn new(file: FileSpec) -> Self {
-        Self {
-            files: vec![file],
+        let mut returned = Self {
+            spec: Default::default(),
             _p: PhantomData::default(),
-        }
+        };
+        returned.spec.files.push(file);
+        returned
+    }
+
+    pub fn on_watch_error(
+        mut self,
+        callback: impl Fn(&anyhow::Error) + Send + Sync + 'static,
+    ) -> Self {
+        self.spec.error_callbacks.push(Arc::new(callback));
+        self
     }
 
     pub fn and_overlay_json(self, path: impl Into<PathBuf>) -> Self {
@@ -46,7 +61,7 @@ where
     }
 
     fn and_overlay(mut self, file: FileSpec) -> Self {
-        self.files.push(file);
+        self.spec.files.push(file);
         self
     }
 
@@ -59,7 +74,7 @@ where
     fn load_value(&self) -> Result<T> {
         let mut value = serde_json::Value::Null;
 
-        for overlay in &self.files {
+        for overlay in &self.spec.files {
             let overlay_value: serde_json::Value = match overlay {
                 FileSpec::Json(p) => serde_json::from_reader(std::fs::File::open(p)?)
                     .with_context(|| {
@@ -86,35 +101,65 @@ where
     }
 
     fn spawn_watcher(&self, config: Config<T>) -> Result<WatchHandle> {
-        let files = self.files.clone();
+        let spec = self.spec.clone();
 
-        let mut stats = files
+        let mut stats = spec
+            .files
             .iter()
             .map(|f| f.mtime())
-            .map_ok(Some)
             .collect::<Result<Vec<_>>>()?;
 
         let returned = WatchHandle::default();
         let dropped = returned.dropped.clone();
         std::thread::spawn(move || {
             let loader = Self {
-                files,
+                spec,
                 _p: Default::default(),
             };
             while !dropped.load(Ordering::Relaxed) {
-                let new_stats = loader
-                    .files
-                    .iter()
-                    .map(|f| f.mtime().ok())
-                    .collect::<Vec<_>>();
-                if new_stats != stats {
-                    let _ = loader.load_value().and_then(|v| config.replace(v));
+                if let Ok(Some(new_stats)) =
+                    loader.reload_if_changed(&config, &stats).map_err(|e| {
+                        log::error!("Error when watching for changes: {:?}", e);
+                        loader.handle_error(e);
+                    })
+                {
+                    stats = new_stats;
                 }
-                stats = new_stats;
                 std::thread::sleep(WATCH_INTERVAL);
             }
         });
         Ok(returned)
+    }
+
+    fn reload_if_changed(
+        &self,
+        config: &Config<T>,
+        stats: &[SystemTime],
+    ) -> Result<Option<Vec<SystemTime>>> {
+        let new_stats = dbg!(self
+            .spec
+            .files
+            .iter()
+            .map(|f| f.mtime())
+            .collect::<Result<Vec<_>>>())?;
+        if new_stats != stats {
+            self.load_value()
+                .context("Failed loading configuration from files")
+                .and_then(|v| {
+                    config
+                        .replace(v)
+                        .context("Failed replacing inner configuration value")
+                })?;
+            Ok(Some(new_stats))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn handle_error(&self, error: anyhow::Error) {
+        for handler in &self.spec.error_callbacks {
+            handler(&error)
+        }
     }
 }
 
@@ -144,6 +189,9 @@ impl FileSpec {
     }
 
     fn mtime(&self) -> Result<SystemTime> {
-        Ok(std::fs::metadata(self.path())?.modified()?)
+        std::fs::metadata(self.path())
+            .with_context(|| format!("Cannot fetch metadata for {:?}", self.path()))?
+            .modified()
+            .with_context(|| format!("Cannot get mtime for {:?}", self.path()))
     }
 }

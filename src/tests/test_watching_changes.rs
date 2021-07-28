@@ -1,9 +1,10 @@
-use super::utils::file_with;
+use super::utils::{file_with, short_sleep};
 use crate::Config;
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::{
     io::{Seek, SeekFrom, Write},
-    time::Duration,
+    sync::Arc,
 };
 
 #[derive(Deserialize, Serialize)]
@@ -32,7 +33,7 @@ fn test_watching_changes_simple_files() {
     root_file.write_all("name: new_name".as_bytes()).unwrap();
     root_file.flush().unwrap();
 
-    std::thread::sleep(Duration::from_millis(10));
+    short_sleep();
 
     assert_eq!(cfg.get().name, "new_name");
     assert_eq!(cfg.get().id, 3);
@@ -41,14 +42,11 @@ fn test_watching_changes_simple_files() {
     overlay_file.write_all("id: 6".as_bytes()).unwrap();
     overlay_file.flush().unwrap();
 
-    std::thread::sleep(Duration::from_millis(10));
+    short_sleep();
 
     assert_eq!(cfg.get().name, "new_name");
     assert_eq!(cfg.get().id, 6);
 }
-
-#[test]
-fn test_watching_changes_errors() {}
 
 #[cfg(any(target_os = "unix", target_os = "macos"))]
 #[test]
@@ -92,8 +90,35 @@ fn test_watching_through_symlinks() {
 
     std::fs::remove_file(&symlink_path).unwrap();
     std::os::unix::fs::symlink(&dir_2, &symlink_path).unwrap();
-    std::thread::sleep(Duration::from_millis(10));
+    short_sleep();
 
     assert_eq!(cfg.get().name, "Test");
     assert_eq!(cfg.get().id, 2);
+}
+
+#[test]
+fn test_watching_changes_errors() {
+    let errors = Arc::new(Mutex::new(Vec::new()));
+    let errors_clone = errors.clone();
+    let (file, path) = file_with("name: name\nid: 1");
+    let (_cfg, _watcher) = Config::<ExampleConfig>::from_yaml_file(&path)
+        .on_watch_error(move |e| errors_clone.lock().push(format!("{:?}", e)))
+        .load_and_watch()
+        .unwrap();
+
+    drop(file);
+    path.close().unwrap();
+    short_sleep();
+
+    let locked_errors = errors.lock();
+    assert!(locked_errors.len() > 0, "Errors not detected as expected!");
+    for error in &*locked_errors {
+        assert!(
+            format!("{:?}", error)
+                .to_ascii_lowercase()
+                .contains("no such file"),
+            "Unexpected error: {:?}",
+            error
+        );
+    }
 }
