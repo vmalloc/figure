@@ -21,7 +21,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-cache-${{ steps.toolchain.outputs.rustc_hash }}-
       - name: Clippy
-        run: cargo clippy --tests --workspace --examples
+        run: cargo clippy --tests --examples --workspace -- -D warnings -D clippy::todo -D clippy::dbg_macro -D clippy::unimplemented
       - name: Build
         run: cargo build --verbose --all --examples
       - name: Run tests
