@@ -1,6 +1,7 @@
 use crate::Config;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -87,12 +88,12 @@ where
     }
 
     pub fn load(&self) -> Result<Config<T>> {
-        let returned = Config::new_with(self.load_value()?)?;
+        let returned = Config::new_with_raw(self.load_value()?)?;
 
         Ok(returned)
     }
 
-    fn load_value(&self) -> Result<T> {
+    fn load_value(&self) -> Result<Value> {
         let mut value = match &self.spec.factory {
             Some(factory) => serde_json::to_value(&factory())?,
             None => serde_json::Value::Null,
@@ -112,9 +113,7 @@ where
             json_patch::merge(&mut value, &overlay_value);
         }
 
-        let inner =
-            serde_json::from_value(value).context("Failed deserializing value from files")?;
-        Ok(inner)
+        Ok(value)
     }
 
     pub fn load_and_watch(&self) -> Result<(Config<T>, WatchHandle)> {
@@ -168,7 +167,7 @@ where
                 .context("Failed loading configuration from files")
                 .and_then(|v| {
                     config
-                        .replace(v)
+                        .replace_raw(v)
                         .context("Failed replacing inner configuration value")
                 })?;
             Ok(Some(new_stats))

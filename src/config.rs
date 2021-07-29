@@ -7,8 +7,22 @@ use std::{path::PathBuf, sync::Arc};
 use crate::config_loader::ConfigLoader;
 
 struct ConfigInner<T: Send + Sync> {
-    value: T,
+    built: T,
     raw: Value,
+    overlay: Value,
+}
+
+impl<T> ConfigInner<T>
+where
+    T: Send + Sync + for<'de> Deserialize<'de>,
+{
+    fn rebuild(&mut self) -> Result<()> {
+        let mut to_build = self.raw.clone();
+        json_patch::merge(&mut to_build, &self.overlay);
+
+        self.built = serde_json::from_value(to_build)?;
+        Ok(())
+    }
 }
 
 pub struct Config<T: Send + Sync> {
@@ -41,11 +55,20 @@ where
         V: for<'de> Deserialize<'de>,
     {
         let locked = self.read_inner();
-        let mut returned = &locked.raw;
+        let mut returned_raw = &locked.raw;
+        let mut returned_overlay = &locked.overlay;
         for part in path.split('.') {
-            returned = &returned[part];
+            returned_raw = &returned_raw[part];
+            returned_overlay = &returned_overlay[part];
         }
-        let returned = serde_json::from_value(returned.clone())?;
+
+        let value = if returned_overlay.is_null() {
+            returned_raw
+        } else {
+            returned_overlay
+        };
+
+        let returned = serde_json::from_value(value.clone())?;
         Ok(returned)
     }
 
@@ -67,7 +90,7 @@ where
     }
 
     pub fn get(&self) -> MappedRwLockReadGuard<T> {
-        RwLockReadGuard::map(self.inner.read(), |inner| &inner.value)
+        RwLockReadGuard::map(self.inner.read(), |inner| &inner.built)
     }
 
     fn merge(&self, patch: Value) -> Result<()> {
@@ -76,12 +99,10 @@ where
 
     fn merge_and_keep_locked(&self, patch: Value) -> Result<RwLockWriteGuard<ConfigInner<T>>> {
         let mut locked = self.write_inner();
-        let mut new_raw = locked.raw.clone();
-        json_patch::merge(&mut new_raw, &patch);
-        let new_value = serde_json::from_value(new_raw.clone())?;
-
-        locked.raw = new_raw;
-        locked.value = new_value;
+        let mut new_overlay = locked.overlay.clone();
+        json_patch::merge(&mut new_overlay, &patch);
+        locked.overlay = new_overlay;
+        locked.rebuild()?;
         Ok(locked)
     }
 
@@ -93,11 +114,11 @@ where
         self.inner.write()
     }
 
-    pub fn replace(&self, value: T) -> Result<()> {
+    pub fn replace_raw(&self, value: Value) -> Result<()> {
         let raw = serde_json::to_value(&value)?;
         let mut locked = self.write_inner();
-        locked.value = value;
         locked.raw = raw;
+        locked.rebuild()?;
 
         Ok(())
     }
@@ -113,11 +134,25 @@ impl<T> Config<T>
 where
     T: for<'de> Deserialize<'de> + Serialize + Send + Sync,
 {
-    pub fn new_with(value: T) -> Result<Self> {
-        let raw = serde_json::to_value(&value)?;
-        Ok(Self {
-            inner: Arc::new(RwLock::new(ConfigInner { value, raw })),
-        })
+    pub fn new_with(built: T) -> Result<Self> {
+        let raw = serde_json::to_value(&built)?;
+        Ok(Self::new_with_raw_and_built(raw, built))
+    }
+
+    pub(crate) fn new_with_raw(raw: Value) -> Result<Self> {
+        let built = serde_json::from_value(raw.clone())?;
+        Ok(Self::new_with_raw_and_built(raw, built))
+    }
+
+    fn new_with_raw_and_built(raw: Value, built: T) -> Self {
+        let overlay = json!({});
+        Self {
+            inner: Arc::new(RwLock::new(ConfigInner {
+                built,
+                raw,
+                overlay,
+            })),
+        }
     }
 }
 

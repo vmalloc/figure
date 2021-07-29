@@ -48,6 +48,42 @@ fn test_watching_changes_simple_files() {
     assert_eq!(cfg.get().id, 6);
 }
 
+#[test]
+fn test_watching_changes_with_set_overrides() {
+    let (mut root_file, root_path) = file_with("name: name");
+    let (mut overlay_file, overlay_path) = file_with("id: 3");
+
+    let (cfg, _watcher) = Config::<ExampleConfig>::load_yaml_file(&root_path)
+        .and_overlay_yaml(&overlay_path)
+        .load_and_watch()
+        .unwrap();
+    {
+        let inner = cfg.get();
+        assert_eq!(inner.name, "name");
+        assert_eq!(inner.id, 3);
+    }
+
+    cfg.set_raw("name", "other name").unwrap();
+
+    root_file.seek(SeekFrom::Start(0)).unwrap();
+    root_file.write_all("name: new_name".as_bytes()).unwrap();
+    root_file.flush().unwrap();
+
+    short_sleep();
+
+    assert_eq!(cfg.get().name, "other name");
+    assert_eq!(cfg.get().id, 3);
+
+    overlay_file.seek(SeekFrom::Start(0)).unwrap();
+    overlay_file.write_all("id: 6".as_bytes()).unwrap();
+    overlay_file.flush().unwrap();
+
+    short_sleep();
+
+    assert_eq!(cfg.get().name, "other name");
+    assert_eq!(cfg.get().id, 6);
+}
+
 #[cfg(any(target_os = "unix", target_os = "macos"))]
 #[test]
 fn test_watching_through_symlinks() {
