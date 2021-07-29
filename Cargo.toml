@@ -7,7 +7,7 @@ license = "Apache-2.0"
 name = "figure"
 readme = "README.md"
 repository = "https://github.com/vmalloc/figure"
-version = "0.0.3"
+version = "0.0.4"
 
 [dependencies]
 anyhow = "1.0.42"
