@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{path::PathBuf, sync::Arc};
 
-use crate::config_loader::{ConfigLoader, FileSpec};
+use crate::config_loader::ConfigLoader;
 
 struct ConfigInner<T: Send + Sync> {
     value: T,
@@ -27,12 +27,12 @@ impl<T> Config<T>
 where
     T: for<'de> Deserialize<'de> + Serialize + Send + Sync,
 {
-    pub fn from_json_file(path: impl Into<PathBuf>) -> ConfigLoader<T> {
-        ConfigLoader::new(FileSpec::Json(path.into()))
+    pub fn load_json_file(path: impl Into<PathBuf>) -> ConfigLoader<T> {
+        ConfigLoader::new().and_overlay_json(path)
     }
 
-    pub fn from_yaml_file(path: impl Into<PathBuf>) -> ConfigLoader<T> {
-        ConfigLoader::new(FileSpec::Yaml(path.into()))
+    pub fn load_yaml_file(path: impl Into<PathBuf>) -> ConfigLoader<T> {
+        ConfigLoader::new().and_overlay_yaml(path)
     }
 
     // Gets a raw value by its path
@@ -127,5 +127,9 @@ where
 {
     pub fn new_with_default() -> Result<Self> {
         Self::new_with(Default::default())
+    }
+
+    pub fn load_default() -> ConfigLoader<T> {
+        ConfigLoader::new().with_factory(Default::default)
     }
 }

@@ -19,7 +19,7 @@ fn test_watching_changes_simple_files() {
 
     let (mut overlay_file, overlay_path) = file_with("id: 3");
 
-    let (cfg, _watcher) = Config::<ExampleConfig>::from_yaml_file(&root_path)
+    let (cfg, _watcher) = Config::<ExampleConfig>::load_yaml_file(&root_path)
         .and_overlay_yaml(&overlay_path)
         .load_and_watch()
         .unwrap();
@@ -80,7 +80,7 @@ fn test_watching_through_symlinks() {
         .unwrap();
 
     let (_overlay, path) = file_with("name: Test");
-    let (cfg, _watcher) = Config::<ExampleConfig>::from_yaml_file(symlink_path.join("file"))
+    let (cfg, _watcher) = Config::<ExampleConfig>::load_yaml_file(symlink_path.join("file"))
         .and_overlay_yaml(&path)
         .load_and_watch()
         .unwrap();
@@ -101,7 +101,7 @@ fn test_watching_changes_errors() {
     let errors = Arc::new(Mutex::new(Vec::new()));
     let errors_clone = errors.clone();
     let (file, path) = file_with("name: name\nid: 1");
-    let (_cfg, _watcher) = Config::<ExampleConfig>::from_yaml_file(&path)
+    let (_cfg, _watcher) = Config::<ExampleConfig>::load_yaml_file(&path)
         .on_watch_error(move |e| errors_clone.lock().push(format!("{:?}", e)))
         .load_and_watch()
         .unwrap();

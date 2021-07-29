@@ -2,7 +2,6 @@ use crate::Config;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{
-    marker::PhantomData,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -21,27 +20,49 @@ pub struct ConfigLoader<T>
 where
     T: Send + Sync + 'static,
 {
-    spec: LoaderSpec,
-    _p: PhantomData<T>,
+    spec: LoaderSpec<T>,
 }
 
-#[derive(Clone, Default)]
-struct LoaderSpec {
+struct LoaderSpec<T> {
     files: Vec<FileSpec>,
+    factory: Option<Arc<dyn Fn() -> T + 'static + Send + Sync>>,
     error_callbacks: Vec<Arc<dyn Fn(&anyhow::Error) + 'static + Send + Sync>>,
+}
+
+impl<T> Clone for LoaderSpec<T> {
+    fn clone(&self) -> Self {
+        Self {
+            files: self.files.clone(),
+            factory: self.factory.clone(),
+            error_callbacks: self.error_callbacks.clone(),
+        }
+    }
+}
+
+impl<T> Default for LoaderSpec<T> {
+    fn default() -> Self {
+        Self {
+            files: Default::default(),
+            factory: None,
+            error_callbacks: Default::default(),
+        }
+    }
 }
 
 impl<T> ConfigLoader<T>
 where
     T: for<'de> Deserialize<'de> + Serialize + Send + Sync,
 {
-    pub(crate) fn new(file: FileSpec) -> Self {
-        let mut returned = Self {
+    // we don't want loaders to be default-constructed elsewhere
+    pub(crate) fn new() -> Self {
+        Self {
             spec: Default::default(),
-            _p: PhantomData::default(),
-        };
-        returned.spec.files.push(file);
-        returned
+        }
+    }
+
+    pub(crate) fn with_factory(mut self, f: impl Fn() -> T + 'static + Send + Sync) -> Self {
+        self.spec.factory.replace(Arc::new(f));
+        self
     }
 
     pub fn on_watch_error(
@@ -72,7 +93,10 @@ where
     }
 
     fn load_value(&self) -> Result<T> {
-        let mut value = serde_json::Value::Null;
+        let mut value = match &self.spec.factory {
+            Some(factory) => serde_json::to_value(&factory())?,
+            None => serde_json::Value::Null,
+        };
 
         for overlay in &self.spec.files {
             let overlay_value: serde_json::Value = match overlay {
@@ -112,10 +136,7 @@ where
         let returned = WatchHandle::default();
         let dropped = returned.dropped.clone();
         std::thread::spawn(move || {
-            let loader = Self {
-                spec,
-                _p: Default::default(),
-            };
+            let loader = Self { spec };
             while !dropped.load(Ordering::Relaxed) {
                 if let Ok(Some(new_stats)) =
                     loader.reload_if_changed(&config, &stats).map_err(|e| {
@@ -136,12 +157,12 @@ where
         config: &Config<T>,
         stats: &[SystemTime],
     ) -> Result<Option<Vec<SystemTime>>> {
-        let new_stats = dbg!(self
+        let new_stats = self
             .spec
             .files
             .iter()
             .map(|f| f.mtime())
-            .collect::<Result<Vec<_>>>())?;
+            .collect::<Result<Vec<_>>>()?;
         if new_stats != stats {
             self.load_value()
                 .context("Failed loading configuration from files")
@@ -175,7 +196,7 @@ impl Drop for WatchHandle {
 }
 
 #[derive(Clone)]
-pub(crate) enum FileSpec {
+enum FileSpec {
     Json(PathBuf),
     Yaml(PathBuf),
 }

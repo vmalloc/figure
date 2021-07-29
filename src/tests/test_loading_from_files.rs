@@ -16,7 +16,7 @@ fn test_loading_json_file() {
     
     "#,
     );
-    let cfg = Config::<ExampleConfig>::from_json_file(&path)
+    let cfg = Config::<ExampleConfig>::load_json_file(&path)
         .load()
         .unwrap();
 
@@ -31,7 +31,7 @@ fn test_loading_yaml_file() {
 value: 2
 "#,
     );
-    let cfg = Config::<ExampleConfig>::from_yaml_file(&path)
+    let cfg = Config::<ExampleConfig>::load_yaml_file(&path)
         .load()
         .unwrap();
 
