@@ -11,5 +11,5 @@ pub(super) fn file_with(contents: &str) -> (File, TempPath) {
 }
 
 pub(super) fn short_sleep() {
-    std::thread::sleep(Duration::from_millis(10))
+    std::thread::sleep(Duration::from_millis(50))
 }
