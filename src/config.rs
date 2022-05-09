@@ -72,7 +72,6 @@ where
         Ok(returned)
     }
 
-    // Sets a raw value by its path
     pub fn set_raw<V>(&self, path: &str, value: V) -> Result<()>
     where
         V: Serialize,

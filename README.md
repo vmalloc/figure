@@ -10,7 +10,9 @@
 
 # Getting Started
 
-The most basic use case is using and populating an empty configuration:
+`figure` Configuration objects are wrappers around an inner configuration value. By default this value is a `serde_json::Value`, but this can be customized to fit any type that is `Serialize` and `Deserialize`. 
+
+Configuration objects maintain the "raw" state of the configuration they hold - i.e. the serde_json representation of the value before building it. Manipulating this data is done by `set_raw` and `get_raw`:
 
 ```rust
 use figure::Config;
@@ -21,7 +23,7 @@ let value: u32 = cfg.get_raw("x").unwrap();
 assert_eq!(value, 2);
 ```
 
-The "raw" in the above example means that the updates happen on the raw structure of the configuration, which is actually based on `serde_json::Value`. In the default case this is has little meaning, but one you use `figure` to hold your own custom data types this makes more sense:
+More useful cases involve creating your own types for holding the "built" configuration values. In this case it makes more sense to get the "built" configuration value via `get()`, and modify it via `modify()`:
 
 ```rust
 use figure::Config;
@@ -38,4 +40,5 @@ assert_eq!(value, 0);
 cfg.set_raw("value", 2);
 let value = cfg.get().value;
 assert_eq!(value, 2);
+cfg.modify(|inner| inner.value=2);
 ```
