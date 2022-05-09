@@ -18,7 +18,7 @@ Configuration objects maintain the "raw" state of the configuration they hold - 
 use figure::Config;
 
 let cfg = Config::empty();
-cfg.set_raw("x", 2).unwrap();
+cfg.set_raw("x", 2u32).unwrap();
 let value: u32 = cfg.get_raw("x").unwrap();
 assert_eq!(value, 2);
 ```
@@ -37,8 +37,7 @@ struct MyConfig {
 let cfg = Config::<MyConfig>::new_with_default().unwrap();
 let value = cfg.get().value;
 assert_eq!(value, 0);
-cfg.set_raw("value", 2);
+cfg.set_raw("value", 2u32);
 let value = cfg.get().value;
 assert_eq!(value, 2);
-cfg.modify(|inner| inner.value=2);
 ```

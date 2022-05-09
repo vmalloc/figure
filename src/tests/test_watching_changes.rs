@@ -1,10 +1,12 @@
 use super::utils::{file_with, short_sleep};
-use crate::Config;
+use crate::{config_loader::ConfigLoader, Config};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::{
     io::{Seek, SeekFrom, Write},
     sync::Arc,
+    time::Duration,
 };
 
 #[derive(Deserialize, Serialize)]
@@ -21,7 +23,7 @@ fn test_watching_changes_simple_files() {
 
     let (cfg, _watcher) = Config::<ExampleConfig>::load_yaml_file(&root_path)
         .and_overlay_yaml(&overlay_path)
-        .load_and_watch()
+        .load_and_watch(Duration::from_millis(1))
         .unwrap();
     {
         let inner = cfg.get();
@@ -49,13 +51,41 @@ fn test_watching_changes_simple_files() {
 }
 
 #[test]
+fn test_watching_changes_files_and_url() {
+    let server = super::utils::http_server_with(r#"{}"#).unwrap();
+    let (mut overlay_file, overlay_path) = file_with(r#"{}"#);
+
+    let (cfg, _watcher) = ConfigLoader::<Value>::new()
+        .and_overlay_json(&overlay_path)
+        .and_json_url(server.url().clone())
+        .load_and_watch(Duration::from_millis(1))
+        .unwrap();
+
+    assert_eq!(*cfg.get(), json!({}));
+
+    server.set_contents(r#"{"a": 1}"#);
+
+    short_sleep();
+
+    assert_eq!(*cfg.get(), json!({"a": 1}));
+
+    overlay_file.seek(SeekFrom::Start(0)).unwrap();
+    overlay_file.write_all(r#"{"b": 2}"#.as_bytes()).unwrap();
+    overlay_file.flush().unwrap();
+
+    short_sleep();
+
+    assert_eq!(*cfg.get(), json!({"a": 1, "b": 2}));
+}
+
+#[test]
 fn test_watching_changes_with_set_overrides() {
     let (mut root_file, root_path) = file_with("name: name");
     let (mut overlay_file, overlay_path) = file_with("id: 3");
 
     let (cfg, _watcher) = Config::<ExampleConfig>::load_yaml_file(&root_path)
         .and_overlay_yaml(&overlay_path)
-        .load_and_watch()
+        .load_and_watch(Duration::from_millis(1))
         .unwrap();
     {
         let inner = cfg.get();
@@ -118,7 +148,7 @@ fn test_watching_through_symlinks() {
     let (_overlay, path) = file_with("name: Test");
     let (cfg, _watcher) = Config::<ExampleConfig>::load_yaml_file(symlink_path.join("file"))
         .and_overlay_yaml(&path)
-        .load_and_watch()
+        .load_and_watch(Duration::from_millis(1))
         .unwrap();
 
     assert_eq!(cfg.get().name, "Test");
@@ -139,7 +169,7 @@ fn test_watching_changes_errors() {
     let (file, path) = file_with("name: name\nid: 1");
     let (_cfg, _watcher) = Config::<ExampleConfig>::load_yaml_file(&path)
         .on_watch_error(move |e| errors_clone.lock().push(format!("{:?}", e)))
-        .load_and_watch()
+        .load_and_watch(Duration::from_millis(1))
         .unwrap();
 
     drop(file);
