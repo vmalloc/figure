@@ -20,10 +20,12 @@ where
     spec: LoaderSpec<T>,
 }
 
+type ErrorCallback = dyn Fn(&anyhow::Error) + 'static + Send + Sync;
+
 struct LoaderSpec<T> {
     layers: Vec<Layer>,
     factory: Option<Arc<dyn Fn() -> T + 'static + Send + Sync>>,
-    error_callbacks: Vec<Arc<dyn Fn(&anyhow::Error) + 'static + Send + Sync>>,
+    error_callbacks: Vec<Arc<ErrorCallback>>,
 }
 
 // we have to implement this ourselves without derive, because deriving adds constraint `where T: Clone`

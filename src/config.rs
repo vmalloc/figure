@@ -114,7 +114,7 @@ where
     }
 
     pub fn replace_raw(&self, value: Value) -> Result<()> {
-        let raw = serde_json::to_value(&value)?;
+        let raw = serde_json::to_value(value)?;
         let mut locked = self.write_inner();
         locked.raw = raw;
         locked.rebuild()?;
