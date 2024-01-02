@@ -1,4 +1,4 @@
-use anyhow::{format_err, Result};
+use anyhow::{format_err, Context, Result};
 use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -139,7 +139,9 @@ where
     }
 
     pub(crate) fn new_with_raw(raw: Value) -> Result<Self> {
-        let built = serde_json::from_value(raw.clone())?;
+        let built = serde_json::from_value(raw.clone()).with_context(|| {
+            format!("Failed loading from configuration. Attempted configuration: {raw:?}")
+        })?;
         Ok(Self::new_with_raw_and_built(raw, built))
     }
 
